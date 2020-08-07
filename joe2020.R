@@ -28,9 +28,6 @@ setwd(my.path)
 #setwd("C:/Users/Mara/Downloads/jobmarket")
 my.file <- dlg_input(message="Enter filename with JOE data: ", default=list.files(pattern="(joe)(.*)(xls)"))$res
 
-# want.scrape
-#wantScrape <- as.logical(readline(prompt="Do you want to scrape JOE? T/F: "))
-wantScrape <- as.logical(dlg_input(message="Scrape JOE? T/F: ", default=F)$res)
 
 # Decide on interactive mode ----
 want.interactiveselection<-dlg_input(message="Continue with interactive mode? Y/N: ", default="Y")$res
@@ -103,34 +100,26 @@ my.divisions <- str_split(dlg_input(message="Enter divison name: ", default="")$
 # Function to scrape JOE application requirements/instructions -----
 scrapeJOE <- function(url){
   temp <- read_html(url)
-  out  <- temp %>% html_nodes("br+ .dialog_text > div") %>% html_text()
+  out  <- temp %>% html_nodes(" .listing_section.last > div") %>% html_text()
   return(out)
 } 
 
 # Function to clean XLS file ----
-CleanJOE<-function(rawfile, want.scrape=wantScrape) { 
+CleanJOE<-function(rawfile) { 
 
 ## Clean XLS file from JOE website
 ## rawfile: provide filename of XLS file from JOE
   # if file is not in working directory, include path to the file
-## want.scrapeDoes the user want to invoke scraping?
+## want.scrape: Does the user want to invoke scraping?
 
 
-## Convert downloaded JOE file from XLS to CSV (easier to turn into R data table)
-#works fine with excel
-#warning("Make sure you change the date on line 42 of this script!")
-#warning("Note: You may have to manually delete certain listings because of unreadable characters")
-#rawfile <- "joe_resultset_2019_2020.xls"
+## Upload XLS file (works fine with excel)
 #library(readxl)
-JOBS <- read_xls(rawfile,  sheet=1) #,quote = ""
+JOBS <- read_xls(rawfile,  sheet=1) 
 print(dim(JOBS))
 
-## Manually delete problematic listings (that for some reason have characters that cause the parsing to fail)
-#flag <- (JOBS$jp_institution=="Federal Reserve Bank of San Francisco") | (JOBS$jp_institution=="St. Norbert College") | (is.na(JOBS$jp_id))
-#JOBS <- JOBS[!flag,]
-#print(dim(JOBS))
 
-## If deadline is missing --> put 11/01/2016
+## If deadline is missing --> put 11/01/2020
 JOBS$Application_deadline[JOBS$Application_deadline==""] <- "2020-11-01"
 JOBS$Application_deadline <- as.POSIXct(JOBS$Application_deadline)
 
@@ -178,34 +167,6 @@ JOBS$otherdate[whichare[1:nrow(JOBS)]!=-1] <- regmatches(JOBS$jp_full_text,which
 JOBS$url <- paste("https://www.aeaweb.org/joe/listing.php?JOE_ID=",JOBS$joe_issue_ID,"_",JOBS$jp_id,sep="")
 
 
-if (want.scrape==TRUE) {
-  ## Scrape application instructions from job listing URL
-  JOBS <- cbind(JOBS,matrix("",dim(JOBS)[1],1))
-  colnames(JOBS)[length(JOBS)] <- "instructions"
-  for (i in 1:dim(JOBS)[1]) {
-    JOBS$instructions[i] <- scrapeJOE(JOBS$url[i])
-  }
-
-  JOBS$instructions <- gsub("\\n\\n\\t\\tApplication Requirements","Application Requirements: " ,JOBS$instructions)
-  JOBS$instructions <- gsub("\\t\\n\\t"                           ,""                           ,JOBS$instructions)
-  JOBS$instructions <- gsub("\\r\\n"                              ," "                          ,JOBS$instructions)
-  JOBS$instructions <- gsub("Instructions Below"                  ,"Instructions Below. : "     ,JOBS$instructions)
-  JOBS$instructions <- gsub("Application Instructions"            ," Application Instructions: ",JOBS$instructions)
-  
-  ## Generate the application system (i.e. JOE, EJM, AJO, native institution website, email, etc.)
-  url_pattern <- "http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
-  
-  JOBS$ApplicationURL <- ""
-  whichare <- regexpr(url_pattern,JOBS$jp_full_text, perl=TRUE, useBytes=TRUE)
-  JOBS$ApplicationURL[whichare[1:nrow(JOBS)]!=-1] <- regmatches(JOBS$jp_full_text,whichare)
-  
-  JOBS$EJM<-as.integer(grepl("econjobmarket\\.org"     ,JOBS$ApplicationURL,ignore.case=TRUE) | grepl("econjobmarket\\.org"     ,JOBS$instructions,ignore.case=TRUE))
-  JOBS$JOE<-as.integer(grepl("aeaweb\\.org"            ,JOBS$ApplicationURL,ignore.case=TRUE) | grepl("aeaweb\\.org"            ,JOBS$instructions,ignore.case=TRUE))
-  JOBS$AJO<-as.integer(grepl("academicjobsonline\\.org",JOBS$ApplicationURL,ignore.case=TRUE) | grepl("academicjobsonline\\.org",JOBS$instructions,ignore.case=TRUE))
-  JOBS$Electronic<-as.integer(grepl("email",JOBS$instructions, ignore.case=TRUE))
-  JOBS$Interfolio<-1 - EJM - JOE - AJO - Electronic 
-  JOBS[ , Other := (AJO | Electronic) ]
-}
 
 ## Extract e-mail address for inquiries
 email_pattern <- "([_a-z0-9-]+(\\.[_a-z0-9-]+)*@[a-z0-9-]+(\\.[a-z0-9-]+)*(\\.[a-z]{2,4}))"
